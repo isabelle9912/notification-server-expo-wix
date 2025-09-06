@@ -1,0 +1,12 @@
+{
+  "compilerOptions": {
+    "target": "ES6", // Compila para uma versão moderna do JavaScript
+    "module": "CommonJS", // Sistema de módulos do Node.js
+    "rootDir": "./src", // Onde estão nossos arquivos .ts
+    "outDir": "./dist", // Onde o JavaScript compilado será salvo
+    "esModuleInterop": true, // Melhora a compatibilidade entre módulos
+    "strict": true, // Habilita todas as checagens de tipo estritas
+    "skipLibCheck": true // Pula a verificação de tipos em arquivos de declaração
+  },
+  "include": ["src/**/*"] // Quais arquivos incluir na compilação
+}
