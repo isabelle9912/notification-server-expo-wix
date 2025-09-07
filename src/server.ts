@@ -2,7 +2,7 @@ import "dotenv/config"; // ESSA DEVE SER A PRIMEIRA LINHA DO ARQUIVO
 import express, { Request, Response, Application } from "express";
 import { Expo, ExpoPushMessage } from "expo-server-sdk";
 import bodyParser from "body-parser";
-import { prisma } from "./lib/prisma"; // Importamos nossa instância do Prisma
+import { prisma } from "./lib/prisma"; // Importamos a instância do Prisma
 
 // --- Interfaces (sem alteração) ---
 interface RegisterRequestBody {
@@ -87,7 +87,7 @@ async function sendNotifications(
     return;
   }
 
-  // ✨ MELHORIA 1: Criar um mapa para busca rápida de token -> id ✨
+  // Criar um mapa para busca rápida de token -> id
   const tokenToIdMap = new Map(allTokens.map((t: any) => [t.token, t.id]));
 
   console.log(`Enviando notificações para ${allTokens.length} token(s)...`);
@@ -109,7 +109,7 @@ async function sendNotifications(
       const tickets = await expo.sendPushNotificationsAsync(chunk);
       console.log("Tickets recebidos da Expo:", tickets);
 
-      // ✨ MELHORIA 2: Loop otimizado e seguro para salvar tickets ✨
+      // Loop otimizado e seguro para salvar tickets
       for (let i = 0; i < tickets.length; i++) {
         const ticket = tickets[i];
         // Pegamos a mensagem original para saber a qual token este ticket se refere
