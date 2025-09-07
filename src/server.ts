@@ -1,162 +1,140 @@
+import "dotenv/config"; // ESSA DEVE SER A PRIMEIRA LINHA DO ARQUIVO
 import express, { Request, Response, Application } from "express";
-import {
-  Expo,
-  ExpoPushMessage,
-  ExpoPushTicket,
-  ExpoPushReceipt,
-} from "expo-server-sdk";
+import { Expo, ExpoPushMessage } from "expo-server-sdk";
 import bodyParser from "body-parser";
+import { prisma } from "./lib/prisma"; // Importamos nossa instância do Prisma
 
-// --- Interfaces para Tipagem dos Payloads ---
-
-// O que esperamos receber na rota /register
+// --- Interfaces (sem alteração) ---
 interface RegisterRequestBody {
   token: string;
 }
-
-// O que esperamos receber do webhook do Wix (simplificado)
 interface WixWebhookPayload {
-  id: string; // id do novo post
-  title: string; // titulo do post
+  id: string;
+  title: string;
+  excerpt: string | null;
 }
 
 // --- Inicialização ---
 const app: Application = express();
-const expo = new Expo({
-  accessToken: process.env.EXPO_ACCESS_TOKEN,
-});
-
-// --- Configuração do servidor ---
+const expo = new Expo({ accessToken: process.env.EXPO_ACCESS_TOKEN });
 app.use(bodyParser.json());
-
-// --- "Banco de Dados" em Memória ---
-let savedPushTokens: string[] = [];
 
 // --- Rotas da API ---
 
 /**
- * Rota para registrar um novo token de notificação.
+ * Rota para registrar um novo token no BANCO DE DADOS.
  */
 app.post(
   "/register",
-  (req: Request<{}, {}, RegisterRequestBody>, res: Response) => {
+  async (req: Request<{}, {}, RegisterRequestBody>, res: Response) => {
     const { token } = req.body;
 
     if (!token || !Expo.isExpoPushToken(token)) {
       return res.status(400).send({ error: "Token inválido fornecido." });
     }
 
-    if (!savedPushTokens.includes(token)) {
-      savedPushTokens.push(token);
-      console.log(`Token registrado: ${token}`);
-    }
+    try {
+      // Usamos o `upsert` do Prisma:
+      // - Tenta encontrar um token. Se existir, não faz nada (`update: {}`).
+      // - Se não existir, cria um novo registro.
+      await prisma.pushToken.upsert({
+        where: { token },
+        update: {},
+        create: { token },
+      });
 
-    res.status(200).send({ message: "Token registrado com sucesso!" });
+      console.log(`Token registrado ou atualizado: ${token}`);
+      res.status(200).send({ message: "Token registrado com sucesso!" });
+    } catch (error) {
+      console.error("Erro ao registrar token no banco de dados:", error);
+      res.status(500).send({ error: "Não foi possível registrar o token." });
+    }
   }
 );
 
 /**
- * Rota que receberá o webhook do Wix quando um novo post for publicado.
+ * Rota que receberá o webhook do Wix.
  */
 app.post(
   "/wix-webhook",
   (req: Request<{}, {}, WixWebhookPayload>, res: Response) => {
-    console.log("Webhook do Wix recebido!");
+    console.log("Webhook do Wix recebido:", req.body);
+    const { title, id, excerpt } = req.body;
 
-    const postTitle = req.body?.title || "Um novo post foi publicado!";
-    const postId = req.body?.id;
+    if (!title || !id) {
+      return res
+        .status(400)
+        .send({ error: "Título (title) e ID (id) do post são obrigatórios." });
+    }
 
-    sendNotifications(postTitle, postId);
-
+    sendNotifications(title, id, excerpt);
     res.status(200).send("Webhook processado.");
   }
 );
 
 // --- Lógica de Envio de Notificações ---
 
-/**
- * Monta e envia as notificações, e depois processa os recibos para limpar tokens inválidos.
- * @param title - O título do post para a notificação.
- * @param id - O ID do post .
- */
-async function sendNotifications(title: string, id?: string): Promise<void> {
+async function sendNotifications(
+  title: string,
+  id: string,
+  excerpt: string | null
+): Promise<void> {
+  console.log("Buscando todos os tokens do banco de dados...");
+  const allTokens = await prisma.pushToken.findMany();
+
+  if (allTokens.length === 0) {
+    console.log("Nenhum token registrado para enviar notificações.");
+    return;
+  }
+
+  // ✨ MELHORIA 1: Criar um mapa para busca rápida de token -> id ✨
+  const tokenToIdMap = new Map(allTokens.map((t: any) => [t.token, t.id]));
+
+  console.log(`Enviando notificações para ${allTokens.length} token(s)...`);
+
   const messages: ExpoPushMessage[] = [];
-  for (const pushToken of savedPushTokens) {
+  for (const tokenRecord of allTokens) {
     messages.push({
-      to: pushToken,
+      to: tokenRecord.token,
       sound: "default",
-      title: "Novo Conteúdo",
-      body: title,
+      title: title,
+      body: excerpt || "Novo Conteúdo",
       data: { postId: id },
     });
   }
 
-  // ETAPA 1: Enviar as notificações em lotes (chunks)
   const chunks = expo.chunkPushNotifications(messages);
-  const tickets: ExpoPushTicket[] = [];
-
   for (const chunk of chunks) {
     try {
-      const ticketChunk = await expo.sendPushNotificationsAsync(chunk);
-      tickets.push(...ticketChunk);
-    } catch (error) {
-      console.error("Erro ao enviar chunk de notificações:", error);
-    }
-  }
-  console.log("Tickets recebidos:", tickets);
+      const tickets = await expo.sendPushNotificationsAsync(chunk);
+      console.log("Tickets recebidos da Expo:", tickets);
 
-  // ETAPA 2: Processar os recibos para verificar a entrega
-  const receiptIds: string[] = [];
-  // Criamos um mapa para associar o ID do ticket ao token original
-  const ticketTokenMap = new Map<string, string>();
+      // ✨ MELHORIA 2: Loop otimizado e seguro para salvar tickets ✨
+      for (let i = 0; i < tickets.length; i++) {
+        const ticket = tickets[i];
+        // Pegamos a mensagem original para saber a qual token este ticket se refere
+        const originalMessage = chunk[i];
 
-  for (let i = 0; i < tickets.length; i++) {
-    const ticket = tickets[i];
-    const token = messages[i].to as string; // sabemos que 'to' é uma string aqui
-
-    if (ticket.status === "ok") {
-      receiptIds.push(ticket.id);
-      ticketTokenMap.set(ticket.id, token);
-    } else {
-      // Trata erros que já acontecem no ticket (antes do recibo)
-      const details = ticket.details;
-      if (details && details.error === "DeviceNotRegistered") {
-        console.log(`Token inválido (identificado no ticket): ${token}`);
-        savedPushTokens = savedPushTokens.filter((t) => t !== token);
-      }
-    }
-  }
-
-  const receiptIdChunks = expo.chunkPushNotificationReceiptIds(receiptIds);
-  for (const chunk of receiptIdChunks) {
-    try {
-      const receipts: { [id: string]: ExpoPushReceipt } =
-        await expo.getPushNotificationReceiptsAsync(chunk);
-      console.log("Recibos recebidos:", receipts);
-
-      for (const receiptId in receipts) {
-        const { status, details } = receipts[receiptId];
-        if (status === "error" && details?.error === "DeviceNotRegistered") {
-          const failedToken = ticketTokenMap.get(receiptId);
-          if (failedToken) {
-            console.log(
-              `Removendo token inválido (identificado no recibo): ${failedToken}`
-            );
-            savedPushTokens = savedPushTokens.filter(
-              (token) => token !== failedToken
-            );
+        if (ticket.status === "ok") {
+          const tokenDbId = tokenToIdMap.get(originalMessage.to as string);
+          if (tokenDbId) {
+            await prisma.notificationTicket.create({
+              data: {
+                expoTicketId: ticket.id,
+                pushTokenId: tokenDbId,
+              },
+            });
           }
         }
       }
     } catch (error) {
-      console.error("Erro ao buscar recibos:", error);
+      console.error("Erro ao enviar chunk ou salvar tickets:", error);
     }
   }
 }
 
 // --- Iniciar o Servidor ---
 const PORT: number = process.env.PORT ? parseInt(process.env.PORT, 10) : 3000;
-
 app.listen(PORT, () => {
   console.log(`🚀 Servidor De Notificações rodando na porta ${PORT}`);
 });
