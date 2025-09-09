@@ -9,9 +9,11 @@ interface RegisterRequestBody {
   token: string;
 }
 interface WixWebhookPayload {
-  id: string;
-  title: string;
-  excerpt: string | null;
+  data: {
+    id: string;
+    title: string;
+    excerpt: string | null;
+  };
 }
 
 // --- Inicialização ---
@@ -59,7 +61,7 @@ app.post(
   "/wix-webhook",
   (req: Request<{}, {}, WixWebhookPayload>, res: Response) => {
     console.log("Webhook do Wix recebido:", req.body);
-    const { title, id, excerpt } = req.body;
+    const { title, id, excerpt } = req.body.data;
 
     if (!title || !id) {
       return res
