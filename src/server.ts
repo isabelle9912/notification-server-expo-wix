@@ -76,11 +76,89 @@ app.post(
 
 // --- Lógica de Envio de Notificações ---
 
+// async function sendNotifications(
+//   title: string,
+//   id: string,
+//   excerpt: string | null
+// ): Promise<void> {
+//   console.log("Buscando todos os tokens do banco de dados...");
+//   const allTokens = await prisma.pushToken.findMany();
+
+//   if (allTokens.length === 0) {
+//     console.log("Nenhum token registrado para enviar notificações.");
+//     return;
+//   }
+
+//   // Criar um mapa para busca rápida de token -> id
+//   const tokenToIdMap = new Map(allTokens.map((t: any) => [t.token, t.id]));
+
+//   console.log(`Enviando notificações para ${allTokens.length} token(s)...`);
+
+//   const messages: ExpoPushMessage[] = [];
+//   for (const tokenRecord of allTokens) {
+//     messages.push({
+//       to: tokenRecord.token,
+//       sound: "default",
+//       title: title,
+//       body: excerpt || "Novo Conteúdo",
+//       data: { postId: id },
+//     });
+//   }
+
+//   const chunks = expo.chunkPushNotifications(messages);
+//   for (const chunk of chunks) {
+//     try {
+//       const tickets = await expo.sendPushNotificationsAsync(chunk);
+//       console.log("Tickets recebidos da Expo:", tickets);
+
+//       // Loop otimizado e seguro para salvar tickets
+//       for (let i = 0; i < tickets.length; i++) {
+//         const ticket = tickets[i];
+//         // Pegamos a mensagem original para saber a qual token este ticket se refere
+//         const originalMessage = chunk[i];
+
+//         if (ticket.status === "ok") {
+//           const tokenDbId = tokenToIdMap.get(originalMessage.to as string);
+//           if (tokenDbId) {
+//             await prisma.notificationTicket.create({
+//               data: {
+//                 expoTicketId: ticket.id,
+//                 pushTokenId: tokenDbId,
+//               },
+//             });
+//           }
+//         }
+//       }
+//     } catch (error) {
+//       console.error("Erro ao enviar chunk ou salvar tickets:", error);
+//     }
+//   }
+// }
+
 async function sendNotifications(
   title: string,
-  id: string,
+  postId: string,
   excerpt: string | null
 ): Promise<void> {
+  // --- 1. CHECAGEM DE IDEMPOTÊNCIA ---
+  // Verifica se já enviamos notificação para este post
+  try {
+    const existingTicket = await prisma.notificationTicket.findFirst({
+      where: { postId: postId },
+    });
+
+    if (existingTicket) {
+      console.warn(
+        `Notificação para o post ${postId} já foi processada. Ignorando webhook duplicado.`
+      );
+      return; // Para a execução aqui
+    }
+  } catch (e) {
+    console.error("Erro ao checar idempotência:", e);
+    return; // Falha na checagem, melhor parar para evitar duplicação
+  }
+
+  // --- 2. BUSCA DE TOKENS ---
   console.log("Buscando todos os tokens do banco de dados...");
   const allTokens = await prisma.pushToken.findMany();
 
@@ -89,8 +167,8 @@ async function sendNotifications(
     return;
   }
 
-  // Criar um mapa para busca rápida de token -> id
-  const tokenToIdMap = new Map(allTokens.map((t: any) => [t.token, t.id]));
+  // Mapa para busca rápida de token (String) -> id do banco (Int)
+  const tokenToDbIdMap = new Map(allTokens.map((t) => [t.token, t.id]));
 
   console.log(`Enviando notificações para ${allTokens.length} token(s)...`);
 
@@ -101,37 +179,67 @@ async function sendNotifications(
       sound: "default",
       title: title,
       body: excerpt || "Novo Conteúdo",
-      data: { postId: id },
+      data: { postId: postId }, // Passa o postId para o app
     });
   }
 
+  // --- 3. ENVIO E PROCESSAMENTO DOS TICKETS ---
   const chunks = expo.chunkPushNotifications(messages);
+  const tokensToRemove: string[] = [];
+
   for (const chunk of chunks) {
     try {
       const tickets = await expo.sendPushNotificationsAsync(chunk);
       console.log("Tickets recebidos da Expo:", tickets);
 
-      // Loop otimizado e seguro para salvar tickets
       for (let i = 0; i < tickets.length; i++) {
         const ticket = tickets[i];
-        // Pegamos a mensagem original para saber a qual token este ticket se refere
         const originalMessage = chunk[i];
+        const tokenString = originalMessage.to as string;
+        const tokenDbId = tokenToDbIdMap.get(tokenString);
+
+        if (!tokenDbId) continue; // Token não encontrado no mapa, pula
 
         if (ticket.status === "ok") {
-          const tokenDbId = tokenToIdMap.get(originalMessage.to as string);
-          if (tokenDbId) {
-            await prisma.notificationTicket.create({
-              data: {
-                expoTicketId: ticket.id,
-                pushTokenId: tokenDbId,
-              },
-            });
+          // --- SUCESSO: Salva o ticket no banco ---
+          // (Não salvamos mais o 'status', pois ele foi removido)
+          await prisma.notificationTicket.create({
+            data: {
+              expoTicketId: ticket.id,
+              pushTokenId: tokenDbId,
+              postId: postId, // <-- SALVA O ID DO POST (A chave da idempotência)
+            },
+          });
+        } else if (ticket.status === "error") {
+          // --- ERRO: Checa se o token é inválido ---
+          console.error(
+            `Erro no ticket para ${tokenString}: ${ticket.message}`
+          );
+
+          if (
+            ticket.details &&
+            ticket.details.error === "DeviceNotRegistered"
+          ) {
+            // Se for, marca o token para remoção
+            console.log(`Marcando token inválido para remoção: ${tokenString}`);
+            tokensToRemove.push(tokenString);
           }
         }
       }
     } catch (error) {
       console.error("Erro ao enviar chunk ou salvar tickets:", error);
     }
+  }
+
+  // --- 4. LIMPEZA DOS TOKENS INVÁLIDOS ---
+  if (tokensToRemove.length > 0) {
+    console.log(`Removendo ${tokensToRemove.length} tokens inválidos...`);
+    await prisma.pushToken.deleteMany({
+      where: {
+        token: { in: tokensToRemove },
+      },
+    });
+    console.log("Tokens inválidos removidos.");
   }
 }
 

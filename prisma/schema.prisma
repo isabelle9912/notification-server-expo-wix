@@ -1,34 +1,26 @@
-// This is your Prisma schema file,
-// learn more about it in the docs: https://pris.ly/d/prisma-schema
-
 generator client {
   provider = "prisma-client-js"
 }
 
 datasource db {
-  provider = "postgresql" // Mude de "sqlite" para "postgresql"
-  url      = env("DATABASE_URL")
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
   directUrl = env("DIRECT_URL")
 }
 
-// Modelo para armazenar os tokens de notificação dos usuários
 model PushToken {
-  id        Int      @id @default(autoincrement())
-  token     String   @unique // O token do Expo, que não pode se repetir
-  createdAt DateTime @default(now())
-
-  // Relação: Um token pode ter vários tickets associados a ele
+  id        Int                  @id @default(autoincrement())
+  token     String               @unique
+  createdAt DateTime             @default(now())
   tickets   NotificationTicket[]
 }
 
-// Modelo para rastrear o status de entrega de cada notificação enviada
 model NotificationTicket {
-  id           Int      @id @default(autoincrement())
-  expoTicketId String   @unique // A ID do "recibo" que a Expo nos dá
-  status       String   @default("pending") // Status inicial: pendente, ok, error
-  createdAt    DateTime @default(now())
-  
-  // Chave estrangeira que conecta este ticket a um PushToken específico
+  id           Int       @id @default(autoincrement())
+  expoTicketId String    @unique
+  createdAt    DateTime  @default(now())
   pushTokenId  Int
   pushToken    PushToken @relation(fields: [pushTokenId], references: [id], onDelete: Cascade)
+  postId       String?
+  @@index([postId])
 }

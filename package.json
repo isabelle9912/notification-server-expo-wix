@@ -7,6 +7,7 @@
     "start": "node dist/server.js",
     "dev": "nodemon src/server.ts",
     "check-receipts": "ts-node src/check-receipts.ts",
+    "cleanup": "ts-node src/cleanup-old-tickets.ts",
     "postinstall": "prisma generate"
   },
   "license": "MIT",
