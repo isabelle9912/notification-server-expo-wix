@@ -76,65 +76,6 @@ app.post(
 
 // --- Lógica de Envio de Notificações ---
 
-// async function sendNotifications(
-//   title: string,
-//   id: string,
-//   excerpt: string | null
-// ): Promise<void> {
-//   console.log("Buscando todos os tokens do banco de dados...");
-//   const allTokens = await prisma.pushToken.findMany();
-
-//   if (allTokens.length === 0) {
-//     console.log("Nenhum token registrado para enviar notificações.");
-//     return;
-//   }
-
-//   // Criar um mapa para busca rápida de token -> id
-//   const tokenToIdMap = new Map(allTokens.map((t: any) => [t.token, t.id]));
-
-//   console.log(`Enviando notificações para ${allTokens.length} token(s)...`);
-
-//   const messages: ExpoPushMessage[] = [];
-//   for (const tokenRecord of allTokens) {
-//     messages.push({
-//       to: tokenRecord.token,
-//       sound: "default",
-//       title: title,
-//       body: excerpt || "Novo Conteúdo",
-//       data: { postId: id },
-//     });
-//   }
-
-//   const chunks = expo.chunkPushNotifications(messages);
-//   for (const chunk of chunks) {
-//     try {
-//       const tickets = await expo.sendPushNotificationsAsync(chunk);
-//       console.log("Tickets recebidos da Expo:", tickets);
-
-//       // Loop otimizado e seguro para salvar tickets
-//       for (let i = 0; i < tickets.length; i++) {
-//         const ticket = tickets[i];
-//         // Pegamos a mensagem original para saber a qual token este ticket se refere
-//         const originalMessage = chunk[i];
-
-//         if (ticket.status === "ok") {
-//           const tokenDbId = tokenToIdMap.get(originalMessage.to as string);
-//           if (tokenDbId) {
-//             await prisma.notificationTicket.create({
-//               data: {
-//                 expoTicketId: ticket.id,
-//                 pushTokenId: tokenDbId,
-//               },
-//             });
-//           }
-//         }
-//       }
-//     } catch (error) {
-//       console.error("Erro ao enviar chunk ou salvar tickets:", error);
-//     }
-//   }
-// }
-
 async function sendNotifications(
   title: string,
   postId: string,
