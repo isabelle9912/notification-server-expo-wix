@@ -121,6 +121,8 @@ async function sendNotifications(
       title: title,
       body: excerpt || "Novo Conteúdo",
       data: { postId: postId }, // Passa o postId para o app
+      priority: "high", // Obriga a entrega imediata
+      channelId: "default",
     });
   }
 
