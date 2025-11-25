@@ -55,6 +55,43 @@ app.post(
 );
 
 /**
+ * Rota para deletar um token existente do banco de dados
+ */
+app.delete("/unregister:token", async (req: Request, res: Response) => {
+  try {
+    // 1. Pega o token da URL (ex: /unregister/ExponentPushToken[xxxx])
+    const { token } = req.params;
+
+    if (!token) {
+      return res.status(400).json({ error: "Token é obrigatório." });
+    }
+
+    console.log(`Tentando remover token: ${token}`);
+
+    // 2. Deleta usando o Prisma
+    // Usamos deleteMany para evitar erro caso o token não exista (idempotência)
+    // Se usássemos .delete(), teríamos que tratar o erro P2025 (Record not found)
+    const deleted = await prisma.pushToken.deleteMany({
+      where: {
+        token: token,
+      },
+    });
+
+    if (deleted.count > 0) {
+      console.log(`Sucesso: Token ${token} e seus tickets foram removidos.`);
+      return res.status(200).json({ message: "Token removido com sucesso." });
+    } else {
+      console.log(`Aviso: Token ${token} não foi encontrado no banco.`);
+      // Retornamos 200 mesmo assim, pois o objetivo (não ter o token) foi cumprido
+      return res.status(200).json({ message: "Token já não existia." });
+    }
+  } catch (error) {
+    console.error("Erro crítico ao remover token:", error);
+    return res.status(500).json({ error: "Erro interno ao remover token." });
+  }
+});
+
+/**
  * Rota que receberá o webhook do Wix.
  */
 app.post(
