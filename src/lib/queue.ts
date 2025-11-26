@@ -11,6 +11,7 @@ const getRedisConnection = () => {
     // Conexão de Produção (Upstash/Render)
     return new IORedis(process.env.REDIS_URL, {
       maxRetriesPerRequest: null,
+      enableReadyCheck: false,
       // Esta opção é vital para conexões 'rediss://' (TLS)
       tls: {
         rejectUnauthorized: false,
