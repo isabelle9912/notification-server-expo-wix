@@ -5,11 +5,8 @@
     "rootDir": "./src", // Onde estão nossos arquivos .ts
     "outDir": "./dist", // Onde o JavaScript compilado será salvo
     "esModuleInterop": true, // Melhora a compatibilidade entre módulos
-    "moduleResolution": "node",
-    "resolveJsonModule": true,
     "strict": true, // Habilita todas as checagens de tipo estritas
-    "skipLibCheck": true, // Pula a verificação de tipos em arquivos de declaração
-    "types": ["node"]
+    "skipLibCheck": true // Pula a verificação de tipos em arquivos de declaração
   },
   "include": ["src/**/*"] // Quais arquivos incluir na compilação
 }
