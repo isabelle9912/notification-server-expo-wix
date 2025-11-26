@@ -4,8 +4,24 @@ import { connection } from "./lib/queue";
 import { prisma } from "./lib/prisma";
 import { Expo, ExpoPushMessage } from "expo-server-sdk";
 import { PushToken } from "@prisma/client";
+import express from "express";
 
 const expo = new Expo({ accessToken: process.env.EXPO_ACCESS_TOKEN });
+
+// --- MÁGICA PARA O RENDER NÃO MATAR O WORKER ---
+const app = express();
+const PORT = process.env.PORT || 4000; // Usa a porta que o Render der ou 4000
+
+app.get("/", (req, res) => {
+  res.send("Worker is running! 👷");
+});
+
+app.listen(PORT, () => {
+  console.log(`👷 Worker Web Server rodando na porta ${PORT}`);
+});
+// ------------------------------------------------
+
+console.log("👷 Worker de notificações iniciado e aguardando jobs...");
 
 console.log("Worker de notificações iniciado e aguardando jobs...");
 
