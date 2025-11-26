@@ -8,15 +8,29 @@ import IORedis from "ioredis";
 
 const getRedisConnection = () => {
   if (process.env.REDIS_URL) {
-    // Conexão de Produção (Upstash/Render)
-    return new IORedis(process.env.REDIS_URL, {
-      maxRetriesPerRequest: null,
-      enableReadyCheck: false,
-      // Esta opção é vital para conexões 'rediss://' (TLS)
-      tls: {
-        rejectUnauthorized: false,
-      },
-    });
+    try {
+      const url = new URL(process.env.REDIS_URL);
+
+      console.log("🔗 Conectando ao Redis via URL parseada...");
+
+      return new IORedis({
+        host: url.hostname,
+        port: Number(url.port),
+        username: url.username, // Upstash usa 'default' geralmente
+        password: url.password,
+
+        // Configurações Vitais para Upstash:
+        tls: {
+          rejectUnauthorized: false, // Aceita o certificado do Upstash
+        },
+        maxRetriesPerRequest: null, // Obrigatório para BullMQ
+        enableReadyCheck: false, // <--- OBRIGA a pular o comando INFO
+        family: 0, // Resolve problemas de IPv4/IPv6 no Node 18+
+      });
+    } catch (e) {
+      console.error("Erro ao fazer parse da URL do Redis:", e);
+      throw e;
+    }
   }
 
   // Conexão Local (Docker)
