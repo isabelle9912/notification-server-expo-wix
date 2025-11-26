@@ -6,8 +6,6 @@ import IORedis from "ioredis";
 // Se tiver REDIS_URL (Render/Upstash), usa ela.
 // Se não, tenta usar HOST e PORT separados (Docker local).
 
-console.log(process.env.REDIS_URL);
-
 const getRedisConnection = () => {
   if (process.env.REDIS_URL) {
     // Conexão de Produção (Upstash/Render)
