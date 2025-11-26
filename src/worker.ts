@@ -12,8 +12,13 @@ const expo = new Expo({ accessToken: process.env.EXPO_ACCESS_TOKEN });
 const app = express();
 const PORT = process.env.PORT || 4000; // Usa a porta que o Render der ou 4000
 
-app.get("/", (req, res) => {
+app.get("/", (req: express.Request, res: express.Response) => {
   res.send("Worker is running! 👷");
+});
+
+// Endpoint para "acordar" o worker (Health Check)
+app.get("/health", (req: express.Request, res: express.Response) => {
+  res.status(200).send("OK");
 });
 
 app.listen(PORT, () => {
@@ -27,7 +32,7 @@ console.log("Worker de notificações iniciado e aguardando jobs...");
 
 const worker = new Worker(
   "notifications", // Mesmíssimo nome da fila
-  async (job) => {
+  async (job: any) => {
     const { title, postId, excerpt } = job.data;
     console.log(`[Worker] Processando post: ${postId}`);
 
