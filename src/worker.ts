@@ -150,5 +150,14 @@ const worker = new Worker(
       `[Worker] Finalizado. ${ticketsToSave.length} tickets gerados.`
     );
   },
-  { connection }
+  {
+    connection,
+    // --- MODO ULTRA ECONÔMICO ---
+    concurrency: 1, // Processa 1 por vez (reduz conexões simultâneas)
+
+    // Verifica jobs travados a cada 5 minutos (padrão é muito rápido)
+    // Isso reduz DRASTICAMENTE as leituras no Redis
+    lockDuration: 30000,
+    stalledInterval: 300000, // 300.000ms = 5 minutos
+  }
 );
