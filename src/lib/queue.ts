@@ -42,4 +42,15 @@ const getRedisConnection = () => {
 };
 // Criamos a fila chamada 'notifications'
 export const connection = getRedisConnection();
-export const notificationQueue = new Queue("notifications", { connection });
+export const notificationQueue = new Queue("notifications", {
+  connection,
+  defaultJobOptions: {
+    removeOnComplete: true, // Remove jobs completos para não encher a memória do Redis
+    removeOnFail: 500, // Mantém os últimos 500 erros para debug
+    attempts: 3, // Tenta 3 vezes se falhar o envio
+    backoff: {
+      type: "exponential",
+      delay: 1000,
+    },
+  },
+});
