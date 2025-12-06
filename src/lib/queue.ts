@@ -46,11 +46,13 @@ export const notificationQueue = new Queue("notifications", {
   connection,
   defaultJobOptions: {
     removeOnComplete: true, // Remove jobs completos para não encher a memória do Redis
-    removeOnFail: 500, // Mantém os últimos 500 erros para debug
+    removeOnFail: 100, // Mantém os últimos 100 erros para debug
     attempts: 3, // Tenta 3 vezes se falhar o envio
     backoff: {
       type: "exponential",
       delay: 1000,
     },
   },
+  // --- MODO ECONÔMICO: Desativa métricas desnecessárias ---
+  skipMetasUpdate: true,
 });
