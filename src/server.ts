@@ -5,6 +5,8 @@ import bodyParser from "body-parser";
 import { prisma } from "./lib/prisma"; // Importamos a instância do Prisma
 import { notificationQueue } from "./lib/queue";
 
+const ADMIN_SECRET = process.env.ADMIN_SECRET;
+
 // --- Interfaces (sem alteração) ---
 interface RegisterRequestBody {
   token: string;
@@ -122,6 +124,50 @@ app.post(
     }
   }
 );
+
+/**
+ * Rota para envio manual (Promoções, Avisos, etc)
+ */
+
+app.post("/admin/notify", async (req, res) => {
+  const authHeader = req.headers["x-admin-secret"];
+
+  // 1. Segurança Básica
+  if (authHeader !== ADMIN_SECRET) {
+    return res.status(401).json({ error: "Unauthorized" });
+  }
+
+  const { title, body, postId, route, imageUrl } = req.body;
+
+  // 2. Validação
+  if (!title || !body) {
+    return res.status(400).json({ error: "Title and body are required" });
+  }
+
+  console.log(`📢 Recebido pedido de notificação manual: ${title}`);
+
+  try {
+    // 3. Adiciona na fila
+    await notificationQueue.add(
+      "manual-notification",
+      {
+        title,
+        excerpt: body, // Reutilizando o campo que o worker já espera
+        postId, // Pode ser null
+        route, // Novo campo para Deeplink (ex: "/shop", "/settings")
+        imageUrl, // Opcional: Se quiser mandar imagem no futuro
+      },
+      {
+        priority: 1, // Alta prioridade
+      }
+    );
+
+    return res.json({ success: true, message: "Notificação enfileirada!" });
+  } catch (error) {
+    console.error("Erro ao enfileirar:", error);
+    return res.status(500).json({ error: "Internal Server Error" });
+  }
+});
 
 // --- Iniciar o Servidor ---
 const PORT: number = process.env.PORT ? parseInt(process.env.PORT, 10) : 3000;
