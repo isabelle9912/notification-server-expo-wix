@@ -30,17 +30,20 @@ console.log("Worker de notificações iniciado...");
 const worker = new Worker(
   "notifications",
   async (job: any) => {
-    const { title, postId, excerpt } = job.data;
-    console.log(`[Worker] Processando post: ${postId}`);
+    const { title, postId, excerpt, route } = job.data;
 
-    // 1. Idempotência Global (Verifica uma vez antes de começar)
-    const existingTicket = await prisma.notificationTicket.findFirst({
-      where: { postId },
-    });
+    console.log(`[Worker] Processando post: ${title}`);
 
-    if (existingTicket) {
-      console.log(`[Worker] Post ${postId} já processado. Pulando.`);
-      return;
+    // 1. Idempotência (SÓ SE TIVER POST ID)
+    // Se for aviso geral, pulamos essa verificação para permitir mandar o mesmo aviso 2x se quiser
+    if (postId) {
+      const existingTicket = await prisma.notificationTicket.findFirst({
+        where: { postId },
+      });
+      if (existingTicket) {
+        console.log(`[Worker] Post ${postId} já processado. Pulando.`);
+        return;
+      }
     }
 
     // --- LÓGICA DE PAGINAÇÃO (BATCHING) ---
@@ -81,12 +84,21 @@ const worker = new Worker(
       for (const tokenRecord of batchTokens) {
         if (!Expo.isExpoPushToken(tokenRecord.token)) continue;
 
+        // Montamos o objeto de dados (Payload)
+        const messageData: any = {};
+
+        // Se tem post, manda o ID
+        if (postId) messageData.postId = postId;
+
+        // Se tem rota específica (ex: "Loja", "Biblioteca"), manda a rota
+        if (route) messageData.route = route;
+
         messages.push({
           to: tokenRecord.token,
           sound: "default",
           title: title,
-          body: excerpt || "Novo conteúdo disponível!",
-          data: { postId },
+          body: excerpt,
+          data: messageData,
           priority: "high",
           channelId: "default",
         });
@@ -144,8 +156,16 @@ const worker = new Worker(
 
       // Salva resultados deste lote
       if (ticketsToSave.length > 0) {
-        await prisma.notificationTicket.createMany({ data: ticketsToSave });
+        // Mapeamos para garantir que se postId for undefined, enviamos null
+        const ticketsFormatted = ticketsToSave.map((t) => ({
+          ...t,
+          postId: postId || null, // Garante compatibilidade com o banco
+          route: route || null,
+        }));
+
+        await prisma.notificationTicket.createMany({ data: ticketsFormatted });
       }
+
       if (tokensToRemove.length > 0) {
         await prisma.pushToken.deleteMany({
           where: { token: { in: tokensToRemove } },
