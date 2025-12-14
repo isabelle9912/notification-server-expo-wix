@@ -22,5 +22,7 @@ model NotificationTicket {
   pushTokenId  Int
   pushToken    PushToken @relation(fields: [pushTokenId], references: [id], onDelete: Cascade)
   postId       String?
+  route        String?
+  
   @@index([postId])
 }
