@@ -2,7 +2,6 @@ import "dotenv/config"; // ESSA DEVE SER A PRIMEIRA LINHA DO ARQUIVO
 import express, { Request, Response, Application } from "express";
 import cors from "cors";
 import { Expo } from "expo-server-sdk";
-import bodyParser from "body-parser";
 import { prisma } from "./lib/prisma"; // Importamos a instância do Prisma
 import { notificationQueue } from "./lib/queue";
 
@@ -26,10 +25,28 @@ const app: Application = express();
 
 const expo = new Expo({ accessToken: process.env.EXPO_ACCESS_TOKEN });
 
-app.use(cors({ origin: [ADMIN_FRONT_URL] }));
+// Configuração CORS Melhorada
+app.use(
+  cors({
+    origin: (origin, callback) => {
+      // Permite requests sem 'origin' (como Postman, Apps Mobile ou o próprio servidor)
+      if (!origin) return callback(null, true);
 
-app.use(bodyParser.json());
+      // Verifica se a origem bate com a do .env
+      if (origin === ADMIN_FRONT_URL) {
+        return callback(null, true);
+      } else {
+        console.log(
+          `❌ Bloqueado pelo CORS: ${origin} (Esperado: ${ADMIN_FRONT_URL})`
+        );
+        return callback(new Error("Bloqueado pelo CORS"), false);
+      }
+    },
+    credentials: true, // Importante se for usar cookies/sessões no futuro
+  })
+);
 
+app.use(express.json());
 // --- Rotas da API ---
 
 /**
