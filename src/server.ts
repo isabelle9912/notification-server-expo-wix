@@ -1,11 +1,13 @@
 import "dotenv/config"; // ESSA DEVE SER A PRIMEIRA LINHA DO ARQUIVO
 import express, { Request, Response, Application } from "express";
+import cors from "cors";
 import { Expo } from "expo-server-sdk";
 import bodyParser from "body-parser";
 import { prisma } from "./lib/prisma"; // Importamos a instância do Prisma
 import { notificationQueue } from "./lib/queue";
 
-const ADMIN_SECRET = process.env.ADMIN_SECRET;
+const ADMIN_SECRET = process.env.ADMIN_SECRET!;
+const ADMIN_FRONT_URL: string = process.env.ADMIN_FRONT_URL!;
 
 // --- Interfaces (sem alteração) ---
 interface RegisterRequestBody {
@@ -21,7 +23,11 @@ interface WixWebhookPayload {
 
 // --- Inicialização ---
 const app: Application = express();
+
 const expo = new Expo({ accessToken: process.env.EXPO_ACCESS_TOKEN });
+
+app.use(cors({ origin: [ADMIN_FRONT_URL] }));
+
 app.use(bodyParser.json());
 
 // --- Rotas da API ---
